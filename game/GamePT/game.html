@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spaceship Quiz Game</title>
+  <style>
+    canvas {
+      background: black;
+      display: block;
+      margin: 0 auto;
+    }
+
+    #questionModal {
+      position: fixed;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      display: none;
+      text-align: center;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+
+    #questionModal input {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+
+<div id="questionModal">
+  <p id="questionText">Question?</p>
+  <input type="text" id="answerInput" placeholder="Type your answer...">
+  <button onclick="checkAnswer()">Submit</button>
+  <p id="feedback"></p>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let spaceship = { x: 280, y: 360, width: 40, height: 20 };
+let bullets = [];
+let asteroids = [];
+let keys = {};
+
+let questions = [
+  { q: "What is 3 + 5?", a: "8" },
+  { q: "What is the capital of France?", a: "Paris" },
+  { q: "What color do you get by mixing red and blue?", a: "Purple" }
+];
+
+let finalQuestion = { q: "Qual é o planeta mais próximo do Sol?", a: "Mercúrio" };
+let currentQuestion = null;
+let gamePaused = false;
+let score = 0;
+let finalQuestionShown = false;
+
+document.addEventListener("keydown", (e) => keys[e.key] = true);
+document.addEventListener("keyup", (e) => keys[e.key] = false);
+
+function gameLoop() {
+  if (!gamePaused) {
+    update();
+    draw();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+function update() {
+  if (keys["ArrowLeft"] && spaceship.x > 0) spaceship.x -= 5;
+  if (keys["ArrowRight"] && spaceship.x + spaceship.width < canvas.width) spaceship.x += 5;
+
+  if (keys[" "]) {
+    if (!keys.fired) {
+      bullets.push({ x: spaceship.x + spaceship.width / 2, y: spaceship.y });
+      keys.fired = true;
+    }
+  } else {
+    keys.fired = false;
+  }
+
+  bullets.forEach(b => b.y -= 7);
+  bullets = bullets.filter(b => b.y > 0);
+
+  // Criar asteroides com menos frequência
+  if (Math.random() < 0.01) {
+    const types = ["quiz", "danger", "neutral", "indestrutivel"];
+    const type = types[Math.floor(Math.random() * types.length)];
+    asteroids.push({
+      x: Math.random() * 560,
+      y: 0,
+      size: 30,
+      type: type
+    });
+  }
+
+  asteroids.forEach(a => a.y += 2);
+
+  // Remover asteroides fora da tela (sem penalização para verde)
+  for (let i = asteroids.length - 1; i >= 0; i--) {
+    if (asteroids[i].y > canvas.height) {
+      asteroids.splice(i, 1);
+    }
+  }
+
+  // Colisão com nave
+  for (let i = asteroids.length - 1; i >= 0; i--) {
+    let a = asteroids[i];
+    if (
+      a.y + a.size > spaceship.y &&
+      a.x < spaceship.x + spaceship.width &&
+      a.x + a.size > spaceship.x
+    ) {
+      if (a.type === "danger") {
+        score = Math.max(0, score - 10);
+        asteroids.splice(i, 1);
+      } else {
+        asteroids.splice(i, 1);
+      }
+    }
+  }
+
+  // Colisão com balas
+  for (let i = asteroids.length - 1; i >= 0; i--) {
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      let a = asteroids[i];
+      let b = bullets[j];
+      if (b.x > a.x && b.x < a.x + a.size && b.y > a.y && b.y < a.y + a.size) {
+        bullets.splice(j, 1);
+
+        if (a.type === "indestrutivel") {
+          score = Math.floor(score / 2);
+          asteroids.splice(i, 1);
+          break;
+        } else if (a.type === "quiz") {
+          asteroids.splice(i, 1);
+          showQuestion();
+          return;
+        } else {
+          score += 10;
+          asteroids.splice(i, 1);
+        }
+        break;
+      }
+    }
+  }
+
+  // Vitória
+  if (score >= 100 && !finalQuestionShown) {
+    gamePaused = true;
+    finalQuestionShown = true;
+    currentQuestion = finalQuestion;
+    document.getElementById("questionText").textContent = currentQuestion.q;
+    document.getElementById("answerInput").value = "";
+    document.getElementById("feedback").textContent = "";
+    document.getElementById("questionModal").style.display = "block";
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Nave
+  ctx.fillStyle = "cyan";
+  ctx.fillRect(spaceship.x, spaceship.y, spaceship.width, spaceship.height);
+
+  // Balas
+  ctx.fillStyle = "yellow";
+  bullets.forEach(b => {
+    ctx.fillRect(b.x - 2, b.y, 4, 10);
+  });
+
+  // Asteroides
+  asteroids.forEach(a => {
+    if (a.type === "quiz") ctx.fillStyle = "blue";
+    else if (a.type === "danger") ctx.fillStyle = "red";
+    else if (a.type === "indestrutivel") ctx.fillStyle = "green";
+    else ctx.fillStyle = "gray";
+
+    ctx.beginPath();
+    ctx.arc(a.x + a.size / 2, a.y + a.size / 2, a.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Pontuação
+  ctx.fillStyle = "white";
+  ctx.font = "16px Arial";
+  ctx.fillText("Pontos: " + score, 10, 20);
+}
+
+// Mostrar pergunta normal
+function showQuestion() {
+  gamePaused = true;
+  currentQuestion = questions[Math.floor(Math.random() * questions.length)];
+  document.getElementById("questionText").textContent = currentQuestion.q;
+  document.getElementById("answerInput").value = "";
+  document.getElementById("feedback").textContent = "";
+  document.getElementById("questionModal").style.display = "block";
+}
+
+// Verificar resposta
+function checkAnswer() {
+  let answer = document.getElementById("answerInput").value.trim();
+
+  if (finalQuestionShown) {
+    if (answer.toLowerCase() === finalQuestion.a.toLowerCase()) {
+      document.getElementById("feedback").textContent = "Parabéns! Ganhaste o jogo! 🎉";
+    } else {
+      document.getElementById("feedback").textContent = "Resposta errada. 😢";
+    }
+    return;
+  }
+
+  if (answer.toLowerCase() === currentQuestion.a.toLowerCase()) {
+    score += 20;
+    document.getElementById("feedback").textContent = "Certo!";
+    setTimeout(() => {
+      document.getElementById("questionModal").style.display = "none";
+      gamePaused = false;
+    }, 1000);
+  } else {
+    document.getElementById("feedback").textContent = "Errado! Tenta outra vez.";
+  }
+}
+
+gameLoop();
+</script>
+</body>
+</html>
